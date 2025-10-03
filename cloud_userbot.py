@@ -166,11 +166,19 @@ class CloudUserBot:
             # Get chat info safely
             chat_name = getattr(chat, 'title', getattr(chat, 'first_name', 'مجموعة غير معروفة'))
             
-            # Create notification message
+            # Try to get group link if available
+            group_link = "غير متاح"
+            if hasattr(chat, 'username') and chat.username:
+                group_link = f"https://t.me/{chat.username}"
+            elif hasattr(chat, 'id'):
+                # Create internal link for private groups
+                group_link = f"tg://openmessage?chat_id={chat.id}&message_id={message.id}"
+            
+            # Create clickable notification message
             notification = f"""🚨 **رسالة جديدة تحتوي على كلمات مفتاحية!**
 
 👥 **المجموعة:** {chat_name}
-👤 **المرسل:** {sender_name}
+👤 **المرسل:** [{sender_name}](tg://user?id={sender.id})
 🆔 **المعرف:** {'@' + sender_username if sender_username else 'لا يوجد'}
 🔑 **الكلمات المفتاحية:** {', '.join(keywords)}
 ⏰ **الوقت:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -180,10 +188,28 @@ class CloudUserBot:
 {message.text}
 
 ---
-💬 **للرد:** {'@' + sender_username if sender_username else f"tg://user?id={sender.id}"}"""
+💬 **انقر على اسم المرسل أعلاه للذهاب إليه مباشرة**
+🔗 **رابط الشخص:** tg://user?id={sender.id}
+📱 **رابط الرسالة:** {group_link}"""
             
-            await self.send_to_self(notification)
-            logger.info(f"✅ Sent notification for message from {sender_name} in {chat_name}")
+            # Send notification with parse_mode for clickable links
+            await self.client.send_message('me', notification, parse_mode='markdown')
+            logger.info(f"✅ Sent clickable notification for message from {sender_name} in {chat_name}")
+            
+            # Send additional notification for mobile push notifications
+            push_notification = f"""🔔 **إشعار فوري!**
+
+🚨 كلمة مفتاحية: **{', '.join(keywords)}**
+👤 من: **{sender_name}**
+👥 في: **{chat_name}**
+
+📝 "{message.text[:100]}{'...' if len(message.text) > 100 else ''}"
+
+💬 [اضغط هنا للذهاب للشخص](tg://user?id={sender.id})"""
+            
+            # Send as separate message for better notification visibility
+            await self.client.send_message('me', push_notification, parse_mode='markdown')
+            logger.info("✅ Sent push notification")
             
         except Exception as e:
             logger.error(f"❌ Error sending notification: {e}")
