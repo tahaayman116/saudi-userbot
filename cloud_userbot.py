@@ -31,9 +31,20 @@ class CloudUserBot:
         self.api_id = api_id
         self.api_hash = api_hash
         
-        # Use string session for cloud deployment
+        # Use string session for cloud deployment with optimized settings
         if session_string:
-            self.client = TelegramClient(StringSession(session_string), api_id, api_hash)
+            self.client = TelegramClient(
+                StringSession(session_string), 
+                api_id, 
+                api_hash,
+                # Optimized for many groups
+                flood_sleep_threshold=24,
+                request_retries=5,
+                connection_retries=5,
+                retry_delay=1,
+                auto_reconnect=True,
+                sequential_updates=True
+            )
         else:
             self.client = TelegramClient(StringSession(), api_id, api_hash)
         
@@ -73,8 +84,20 @@ class CloudUserBot:
             self.my_user_id = me.id
             logger.info(f"Started as {me.first_name} (ID: {me.id})")
             
-            # Register event handlers
-            self.client.add_event_handler(self.handle_new_message, events.NewMessage)
+            # Enable catch up for missed messages (important for 900+ groups)
+            await self.client.catch_up()
+            
+            # Register event handlers with filters for better performance
+            self.client.add_event_handler(
+                self.handle_new_message, 
+                events.NewMessage(
+                    incoming=True,  # Only incoming messages
+                    from_users=None,  # From any user
+                    chats=None,  # From any chat
+                    blacklist_chats=False,  # Don't blacklist any chats
+                    func=lambda e: e.is_group or e.is_channel  # Only groups and channels
+                )
+            )
             
             # Send startup message to self
             startup_msg = f"""🤖 **بوت المراقبة السحابي بدأ العمل!**
@@ -101,7 +124,7 @@ class CloudUserBot:
             return False
 
     async def handle_new_message(self, event):
-        """Handle new messages in groups"""
+        """Handle new messages in groups - optimized for 900+ groups"""
         try:
             message = event.message
             
@@ -109,48 +132,28 @@ class CloudUserBot:
             if message.sender_id == self.my_user_id:
                 return
             
-            # Log all incoming messages for debugging
-            chat_type = "private" if hasattr(event.chat, 'first_name') else "group"
-            chat_name = getattr(event.chat, 'title', getattr(event.chat, 'first_name', 'Unknown'))
-            logger.info(f"New message in {chat_type}: {chat_name}")
-            
-            # Only monitor group messages
-            if not (hasattr(event.chat, 'title') and event.chat.title):
-                logger.info(f"Skipping non-group message from {chat_name}")
+            # Skip if no text
+            if not message.text:
                 return
                 
-            # Add group to monitored list
+            # Add group to monitored list (simplified)
             group_id = event.chat_id
             if group_id not in self.monitored_groups:
                 self.monitored_groups.add(group_id)
-                logger.info(f"Added new group to monitoring: {event.chat.title}")
+                chat_name = getattr(event.chat, 'title', 'Unknown Group')
+                logger.info(f"Monitoring new group: {chat_name} (Total: {len(self.monitored_groups)})")
             
-            # Check for keywords in message text
-            if message.text:
-                logger.info(f"Checking message: {message.text[:50]}...")
-                await self.check_keywords(message, event.chat)
-            else:
-                logger.info("Message has no text content")
+            # Quick keyword check
+            text_lower = message.text.lower()
+            found_keywords = [kw for kw in self.keywords if kw.lower() in text_lower]
+            
+            if found_keywords:
+                logger.info(f"🚨 MATCH! Keywords: {found_keywords} in group: {getattr(event.chat, 'title', 'Unknown')}")
+                await self.send_notification(message, event.chat, found_keywords)
                 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
 
-    async def check_keywords(self, message, chat):
-        """Check if message contains keywords"""
-        text_lower = message.text.lower()
-        found_keywords = []
-        
-        for keyword in self.keywords:
-            if keyword.lower() in text_lower:
-                found_keywords.append(keyword)
-        
-        logger.info(f"Found {len(found_keywords)} keywords: {found_keywords}")
-        
-        if found_keywords:
-            logger.info(f"Sending notification for message: {message.text[:100]}...")
-            await self.send_notification(message, chat, found_keywords)
-        else:
-            logger.info("No keywords found in message")
 
     async def send_notification(self, message, chat, keywords):
         """Send notification to self"""
