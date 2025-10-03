@@ -105,6 +105,16 @@ class CloudUserBot:
                 )
             )
             
+            # Register handler for commands in Saved Messages
+            self.client.add_event_handler(
+                self.handle_command,
+                events.NewMessage(
+                    incoming=True,
+                    chats='me',  # Only from Saved Messages
+                    pattern=r'^[+\-!#].*'  # Commands starting with +, -, !, #
+                )
+            )
+            
             # Send startup message to self
             startup_msg = f"""🤖 **بوت المراقبة السحابي بدأ العمل!**
 
@@ -118,7 +128,13 @@ class CloudUserBot:
 🔍 **الكلمات المراقبة:**
 {', '.join(self.keywords)}
 
-💡 **للاختبار:** اكتب في أي مجموعة رسالة تحتوي على إحدى الكلمات أعلاه"""
+💡 **للاختبار:** اكتب في أي مجموعة رسالة تحتوي على إحدى الكلمات أعلاه
+
+🎛️ **أوامر التحكم (في Saved Messages):**
+• `+كلمة` - إضافة كلمة مفتاحية
+• `-كلمة` - حذف كلمة مفتاحية  
+• `#عرض` - عرض جميع الكلمات
+• `!احصائيات` - عرض إحصائيات البوت"""
             
             await self.send_to_self(startup_msg)
             logger.info("Startup message sent to Saved Messages")
@@ -153,6 +169,102 @@ class CloudUserBot:
         except Exception as e:
             logger.warning(f"Could not setup notification channel: {e}")
             self.notification_channel = None
+
+    async def handle_command(self, event):
+        """Handle commands in Saved Messages"""
+        try:
+            message = event.message
+            text = message.text.strip()
+            
+            logger.info(f"Received command: {text}")
+            
+            # Add keyword command: +كلمة
+            if text.startswith('+'):
+                keyword = text[1:].strip()
+                if keyword and keyword not in self.keywords:
+                    self.keywords.append(keyword)
+                    await self.save_keywords()
+                    response = f"✅ **تم إضافة الكلمة المفتاحية:**\n`{keyword}`\n\n📊 **العدد الحالي:** {len(self.keywords)} كلمة"
+                    await self.client.send_message('me', response, parse_mode='markdown')
+                    logger.info(f"Added keyword: {keyword}")
+                elif keyword in self.keywords:
+                    response = f"⚠️ **الكلمة موجودة بالفعل:**\n`{keyword}`"
+                    await self.client.send_message('me', response, parse_mode='markdown')
+                else:
+                    response = "❌ **خطأ:** يرجى كتابة كلمة صحيحة\n**مثال:** `+يساعدني`"
+                    await self.client.send_message('me', response, parse_mode='markdown')
+            
+            # Remove keyword command: -كلمة
+            elif text.startswith('-'):
+                keyword = text[1:].strip()
+                if keyword and keyword in self.keywords:
+                    self.keywords.remove(keyword)
+                    await self.save_keywords()
+                    response = f"✅ **تم حذف الكلمة المفتاحية:**\n`{keyword}`\n\n📊 **العدد الحالي:** {len(self.keywords)} كلمة"
+                    await self.client.send_message('me', response, parse_mode='markdown')
+                    logger.info(f"Removed keyword: {keyword}")
+                elif keyword not in self.keywords:
+                    response = f"⚠️ **الكلمة غير موجودة:**\n`{keyword}`"
+                    await self.client.send_message('me', response, parse_mode='markdown')
+                else:
+                    response = "❌ **خطأ:** يرجى كتابة كلمة صحيحة\n**مثال:** `-يساعدني`"
+                    await self.client.send_message('me', response, parse_mode='markdown')
+            
+            # Show all keywords: #عرض
+            elif text.startswith('#'):
+                command = text[1:].strip().lower()
+                if command in ['عرض', 'الكلمات', 'قائمة']:
+                    if self.keywords:
+                        keywords_list = '\n'.join([f"• `{kw}`" for kw in self.keywords])
+                        response = f"""📋 **قائمة الكلمات المفتاحية:**
+
+{keywords_list}
+
+📊 **العدد الإجمالي:** {len(self.keywords)} كلمة
+
+💡 **للإضافة:** `+كلمة_جديدة`
+💡 **للحذف:** `-كلمة_موجودة`"""
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                    else:
+                        response = "📋 **قائمة الكلمات المفتاحية فارغة**\n\n💡 **لإضافة كلمة:** `+كلمة_جديدة`"
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                else:
+                    response = "❌ **أمر غير معروف**\n**الأوامر المتاحة:**\n• `#عرض` - عرض الكلمات"
+                    await self.client.send_message('me', response, parse_mode='markdown')
+            
+            # Statistics command: !احصائيات
+            elif text.startswith('!'):
+                command = text[1:].strip().lower()
+                if command in ['احصائيات', 'معلومات', 'حالة']:
+                    response = f"""📊 **إحصائيات البوت:**
+
+🔑 **الكلمات المفتاحية:** {len(self.keywords)}
+👥 **المجموعات المراقبة:** {len(self.monitored_groups)}
+☁️ **الحالة:** يعمل على الخادم السحابي
+🆔 **معرف المستخدم:** {self.my_user_id}
+
+🎛️ **أوامر التحكم:**
+• `+كلمة` - إضافة كلمة مفتاحية
+• `-كلمة` - حذف كلمة مفتاحية  
+• `#عرض` - عرض جميع الكلمات
+• `!احصائيات` - عرض هذه المعلومات"""
+                    await self.client.send_message('me', response, parse_mode='markdown')
+                else:
+                    response = "❌ **أمر غير معروف**\n**الأوامر المتاحة:**\n• `!احصائيات` - عرض المعلومات"
+                    await self.client.send_message('me', response, parse_mode='markdown')
+            
+        except Exception as e:
+            logger.error(f"Error handling command: {e}")
+            await self.client.send_message('me', f"❌ **خطأ في تنفيذ الأمر:** {str(e)}")
+
+    async def save_keywords(self):
+        """Save keywords to environment or file"""
+        try:
+            # For now, just log the change
+            logger.info(f"Keywords updated: {self.keywords}")
+            # In a real deployment, you might want to save to a database or file
+        except Exception as e:
+            logger.error(f"Error saving keywords: {e}")
 
     async def handle_new_message(self, event):
         """Handle new messages in groups - optimized for 900+ groups"""
