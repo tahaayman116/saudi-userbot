@@ -77,12 +77,22 @@ class CloudUserBot:
             self.client.add_event_handler(self.handle_new_message, events.NewMessage)
             
             # Send startup message to self
-            await self.send_to_self("🤖 **بوت المراقبة السحابي بدأ العمل!**\n\n"
-                                   f"📊 **الإحصائيات:**\n"
-                                   f"🔑 الكلمات المفتاحية: {len(self.keywords)}\n"
-                                   f"☁️ يعمل على الخادم السحابي\n\n"
-                                   f"✅ البوت جاهز لمراقبة المجموعات!")
+            startup_msg = f"""🤖 **بوت المراقبة السحابي بدأ العمل!**
+
+📊 **الإحصائيات:**
+🔑 الكلمات المفتاحية: {len(self.keywords)}
+☁️ يعمل على الخادم السحابي
+🆔 معرف المستخدم: {me.id}
+
+✅ البوت جاهز لمراقبة المجموعات!
+
+🔍 **الكلمات المراقبة:**
+{', '.join(self.keywords)}
+
+💡 **للاختبار:** اكتب في أي مجموعة رسالة تحتوي على إحدى الكلمات أعلاه"""
             
+            await self.send_to_self(startup_msg)
+            logger.info("Startup message sent to Saved Messages")
             logger.info("Cloud User bot is running...")
             return True
             
@@ -99,8 +109,14 @@ class CloudUserBot:
             if message.sender_id == self.my_user_id:
                 return
             
+            # Log all incoming messages for debugging
+            chat_type = "private" if hasattr(event.chat, 'first_name') else "group"
+            chat_name = getattr(event.chat, 'title', getattr(event.chat, 'first_name', 'Unknown'))
+            logger.info(f"New message in {chat_type}: {chat_name}")
+            
             # Only monitor group messages
             if not (hasattr(event.chat, 'title') and event.chat.title):
+                logger.info(f"Skipping non-group message from {chat_name}")
                 return
                 
             # Add group to monitored list
@@ -111,7 +127,10 @@ class CloudUserBot:
             
             # Check for keywords in message text
             if message.text:
+                logger.info(f"Checking message: {message.text[:50]}...")
                 await self.check_keywords(message, event.chat)
+            else:
+                logger.info("Message has no text content")
                 
         except Exception as e:
             logger.error(f"Error handling message: {e}")
@@ -125,8 +144,13 @@ class CloudUserBot:
             if keyword.lower() in text_lower:
                 found_keywords.append(keyword)
         
+        logger.info(f"Found {len(found_keywords)} keywords: {found_keywords}")
+        
         if found_keywords:
+            logger.info(f"Sending notification for message: {message.text[:100]}...")
             await self.send_notification(message, chat, found_keywords)
+        else:
+            logger.info("No keywords found in message")
 
     async def send_notification(self, message, chat, keywords):
         """Send notification to self"""
@@ -164,8 +188,15 @@ class CloudUserBot:
         """Send message to self (Saved Messages)"""
         try:
             await self.client.send_message('me', message)
+            logger.info("Message sent to Saved Messages successfully")
         except Exception as e:
             logger.error(f"Error sending to self: {e}")
+            # Try alternative method
+            try:
+                await self.client.send_message(self.my_user_id, message)
+                logger.info("Message sent using user ID successfully")
+            except Exception as e2:
+                logger.error(f"Alternative send method also failed: {e2}")
 
     async def handle_shutdown(self):
         """Handle graceful shutdown"""
