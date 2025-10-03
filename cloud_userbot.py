@@ -356,29 +356,31 @@ class CloudUserBot:
 🔗 **أو ابحث عن المعرف:** {'@' + sender_username if sender_username else f'ID: {sender.id}'}
 📱 **رابط الرسالة:** {group_link}"""
             
-            # Send notification with buttons - simplified approach
-            try:
-                # Import button types
-                from telethon import Button
-                
-                # Create buttons using Telethon's Button helper
-                buttons = [
-                    [Button.url("💬 اذهب للشخص", f"tg://user?id={sender.id}")]
-                ]
-                
-                # Add message button if available
-                if group_link != "غير متاح" and group_link.startswith('tg://'):
-                    buttons.append([Button.url("📱 اذهب للرسالة", group_link)])
-                
-                # Send notification with buttons
-                await self.client.send_message('me', notification, parse_mode='markdown', buttons=buttons)
-                logger.info(f"✅ Sent notification with buttons for message from {sender_name} in {chat_name}")
-                
-            except Exception as e:
-                logger.error(f"Button error: {e}")
-                # Fallback to simple message
-                await self.client.send_message('me', notification, parse_mode='markdown')
-                logger.info(f"✅ Sent notification without buttons for message from {sender_name} in {chat_name}")
+            # Send notification with clickable links instead of buttons
+            # Create notification with clickable markdown links
+            clickable_notification = f"""🚨 **رسالة جديدة تحتوي على كلمات مفتاحية!**
+
+👥 **المجموعة:** {chat_name}
+👤 **المرسل:** {sender_name}
+🆔 **المعرف:** {'@' + sender_username if sender_username else 'لا يوجد'}
+🔑 **الكلمات المفتاحية:** {', '.join(keywords)}
+⏰ **الوقت:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+☁️ **المصدر:** خادم سحابي
+
+📝 **الرسالة الكاملة:**
+{message.text}
+
+---
+💬 **[اضغط هنا للذهاب للشخص](tg://user?id={sender.id})**
+
+🔗 **أو ابحث عن المعرف:** {'@' + sender_username if sender_username else f'ID: {sender.id}'}
+📱 **رابط الرسالة:** {group_link}
+
+🔥 **للتواصل السريع انسخ هذا الرابط:**
+`tg://user?id={sender.id}`"""
+            
+            await self.client.send_message('me', clickable_notification, parse_mode='markdown')
+            logger.info(f"✅ Sent clickable notification for message from {sender_name} in {chat_name}")
             
             # Create push notification with better contact method
             push_notification = f"""🔔 **إشعار كلمة مفتاحية!**
@@ -393,22 +395,24 @@ class CloudUserBot:
 💬 **للتواصل:**
 {'@' + sender_username if sender_username else f'انسخ: tg://user?id={sender.id}'}"""
             
+            # Create push notification with clickable link
+            push_with_link = f"""🔔 **إشعار كلمة مفتاحية!**
+
+🚨 **{', '.join(keywords)}**
+👤 **{sender_name}**
+👥 **{chat_name}**
+
+📝 **الرسالة الكاملة:**
+{message.text}
+
+💬 **[اضغط للتواصل مع الشخص](tg://user?id={sender.id})**
+
+🔥 **أو انسخ الرابط:**
+`tg://user?id={sender.id}`"""
+            
             # Send to self using user ID (this triggers notifications better than 'me')
-            try:
-                # Create simple button for push notification
-                push_buttons = [[Button.url("💬 تواصل مع الشخص", f"tg://user?id={sender.id}")]]
-                
-                await self.client.send_message(self.my_user_id, push_notification, parse_mode='markdown', buttons=push_buttons)
-                logger.info("✅ Sent push notification to user ID with button")
-                
-            except Exception as e:
-                logger.error(f"Push notification error: {e}")
-                # Fallback without buttons
-                try:
-                    await self.client.send_message(self.my_user_id, push_notification, parse_mode='markdown')
-                    logger.info("✅ Sent push notification without buttons")
-                except:
-                    logger.error("Failed to send push notification")
+            await self.client.send_message(self.my_user_id, push_with_link, parse_mode='markdown')
+            logger.info("✅ Sent push notification with clickable link")
             
             # Also try sending a simple text message for maximum notification visibility
             simple_alert = f"🚨 {', '.join(keywords)} من {sender_name} في {chat_name}"
@@ -417,7 +421,7 @@ class CloudUserBot:
             
             # If notification channel exists, send there too (channels give better notifications)
             if self.notification_channel:
-                channel_alert = f"""🔔 **إشعار جديد!**
+                channel_with_link = f"""🔔 **إشعار جديد!**
 
 🚨 **{', '.join(keywords)}**
 👤 من: **{sender_name}**
@@ -426,27 +430,13 @@ class CloudUserBot:
 📝 **الرسالة الكاملة:**
 {message.text}
 
-💬 **للتواصل:**
-{'@' + sender_username if sender_username else f'انسخ الرابط: tg://user?id={sender.id}'}
+💬 **[اضغط للذهاب للشخص](tg://user?id={sender.id})**
 
-🔗 **رابط مباشر:**
+🔗 **أو انسخ الرابط:**
 `tg://user?id={sender.id}`"""
                 
-                try:
-                    # Create button for channel
-                    channel_buttons = [[Button.url("💬 اذهب للشخص", f"tg://user?id={sender.id}")]]
-                    
-                    await self.client.send_message(self.notification_channel, channel_alert, parse_mode='markdown', buttons=channel_buttons)
-                    logger.info("✅ Sent notification to private channel with button")
-                    
-                except Exception as e:
-                    logger.error(f"Channel notification error: {e}")
-                    # Fallback without buttons
-                    try:
-                        await self.client.send_message(self.notification_channel, channel_alert, parse_mode='markdown')
-                        logger.info("✅ Sent notification to private channel without buttons")
-                    except:
-                        logger.error("Failed to send channel notification")
+                await self.client.send_message(self.notification_channel, channel_with_link, parse_mode='markdown')
+                logger.info("✅ Sent notification to private channel with clickable link")
             
         except Exception as e:
             logger.error(f"❌ Error sending notification: {e}")
