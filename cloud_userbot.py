@@ -105,13 +105,11 @@ class CloudUserBot:
                 )
             )
             
-            # Register handler for commands in Saved Messages
+            # Register handler for ALL messages in Saved Messages (including my own)
             self.client.add_event_handler(
                 self.handle_command,
                 events.NewMessage(
-                    incoming=True,
-                    chats='me',  # Only from Saved Messages
-                    pattern=r'^[+\-!#].*'  # Commands starting with +, -, !, #
+                    chats='me'  # Only from Saved Messages
                 )
             )
             
@@ -174,9 +172,18 @@ class CloudUserBot:
         """Handle commands in Saved Messages"""
         try:
             message = event.message
+            
+            # Skip if no text
+            if not message.text:
+                return
+                
             text = message.text.strip()
             
-            logger.info(f"Received command: {text}")
+            # Only process commands that start with +, -, #, !
+            if not text.startswith(('+', '-', '#', '!')):
+                return
+            
+            logger.info(f"Processing command: {text}")
             
             # Add keyword command: +كلمة
             if text.startswith('+'):
@@ -185,13 +192,17 @@ class CloudUserBot:
                     self.keywords.append(keyword)
                     await self.save_keywords()
                     response = f"✅ **تم إضافة الكلمة المفتاحية:**\n`{keyword}`\n\n📊 **العدد الحالي:** {len(self.keywords)} كلمة"
+                    # Add small delay to avoid message conflicts
+                    await asyncio.sleep(0.5)
                     await self.client.send_message('me', response, parse_mode='markdown')
                     logger.info(f"Added keyword: {keyword}")
                 elif keyword in self.keywords:
                     response = f"⚠️ **الكلمة موجودة بالفعل:**\n`{keyword}`"
+                    await asyncio.sleep(0.5)
                     await self.client.send_message('me', response, parse_mode='markdown')
                 else:
                     response = "❌ **خطأ:** يرجى كتابة كلمة صحيحة\n**مثال:** `+يساعدني`"
+                    await asyncio.sleep(0.5)
                     await self.client.send_message('me', response, parse_mode='markdown')
             
             # Remove keyword command: -كلمة
@@ -201,13 +212,16 @@ class CloudUserBot:
                     self.keywords.remove(keyword)
                     await self.save_keywords()
                     response = f"✅ **تم حذف الكلمة المفتاحية:**\n`{keyword}`\n\n📊 **العدد الحالي:** {len(self.keywords)} كلمة"
+                    await asyncio.sleep(0.5)
                     await self.client.send_message('me', response, parse_mode='markdown')
                     logger.info(f"Removed keyword: {keyword}")
                 elif keyword not in self.keywords:
                     response = f"⚠️ **الكلمة غير موجودة:**\n`{keyword}`"
+                    await asyncio.sleep(0.5)
                     await self.client.send_message('me', response, parse_mode='markdown')
                 else:
                     response = "❌ **خطأ:** يرجى كتابة كلمة صحيحة\n**مثال:** `-يساعدني`"
+                    await asyncio.sleep(0.5)
                     await self.client.send_message('me', response, parse_mode='markdown')
             
             # Show all keywords: #عرض
@@ -224,12 +238,15 @@ class CloudUserBot:
 
 💡 **للإضافة:** `+كلمة_جديدة`
 💡 **للحذف:** `-كلمة_موجودة`"""
+                        await asyncio.sleep(0.5)
                         await self.client.send_message('me', response, parse_mode='markdown')
                     else:
                         response = "📋 **قائمة الكلمات المفتاحية فارغة**\n\n💡 **لإضافة كلمة:** `+كلمة_جديدة`"
+                        await asyncio.sleep(0.5)
                         await self.client.send_message('me', response, parse_mode='markdown')
                 else:
                     response = "❌ **أمر غير معروف**\n**الأوامر المتاحة:**\n• `#عرض` - عرض الكلمات"
+                    await asyncio.sleep(0.5)
                     await self.client.send_message('me', response, parse_mode='markdown')
             
             # Statistics command: !احصائيات
@@ -248,13 +265,16 @@ class CloudUserBot:
 • `-كلمة` - حذف كلمة مفتاحية  
 • `#عرض` - عرض جميع الكلمات
 • `!احصائيات` - عرض هذه المعلومات"""
+                    await asyncio.sleep(0.5)
                     await self.client.send_message('me', response, parse_mode='markdown')
                 else:
                     response = "❌ **أمر غير معروف**\n**الأوامر المتاحة:**\n• `!احصائيات` - عرض المعلومات"
+                    await asyncio.sleep(0.5)
                     await self.client.send_message('me', response, parse_mode='markdown')
             
         except Exception as e:
             logger.error(f"Error handling command: {e}")
+            await asyncio.sleep(0.5)
             await self.client.send_message('me', f"❌ **خطأ في تنفيذ الأمر:** {str(e)}")
 
     async def save_keywords(self):
