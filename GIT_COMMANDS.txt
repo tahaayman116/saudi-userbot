@@ -1,0 +1,9 @@
+# أوامر Git للرفع
+git init
+git add .
+git commit -m "Saudi User Bot - Cloud Ready"
+git branch -M main
+git remote add origin https://github.com/USERNAME/REPO_NAME.git
+git push -u origin main
+
+# استبدل USERNAME و REPO_NAME بالقيم الصحيحة

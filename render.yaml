@@ -1,0 +1,15 @@
+services:
+  - type: worker
+    name: saudi-userbot
+    env: python
+    buildCommand: pip install -r requirements_cloud.txt
+    startCommand: python cloud_userbot.py
+    envVars:
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_SESSION_STRING
+        sync: false
+      - key: KEYWORDS
+        value: "يسوي,يحل,يساعدني,ابي شخص,تعرفون حد,ابي حد,محتاج,اريد,اطلب,ممكن حد"

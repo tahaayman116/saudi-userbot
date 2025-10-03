@@ -1,0 +1,7 @@
+# متغيرات البيئة للنشر السحابي
+# انسخ هذه القيم وأضفها في لوحة تحكم الاستضافة
+
+TELEGRAM_API_ID=22800059
+TELEGRAM_API_HASH=e755d4474e93f7fe35ef64587473a381
+TELEGRAM_SESSION_STRING=1BJWap1wBuwboeKRcUxsttdYwPwdhXldUvtCrj7heLbqPNH_J_yLY8AS7qtLonYJ9RsjNXtImkbk-iV2vScrwrvNkJRjmSiqeTJaCqKD7Bgc-lCsj3N0K4wrY9uwc7e3UYNFulYE6u-KAoSU9qjOe1cY94vPNDmYVSsvFB_CBFfx42SfU7_q-R9aFilRuP_mgsCHldwpHpcNy3jC4KJqwl0af9gu-w_zps13_faqu7yXpbuB8VASgSm1xS8jXFYNZcXLxPvEh4mEPqVEtC4AYP5gM4RvHQzrt7kL_SkQQUNLlrq5gqm6HOWORNhH_st7fNY5b6_MskZNDEOLyF4RLrxB4EEXPvww=
+KEYWORDS=يسوي,يحل,يساعدني,ابي شخص,تعرفون حد,ابي حد,محتاج,اريد,اطلب,ممكن حد,ابغى,ودي,عايز,بدي
