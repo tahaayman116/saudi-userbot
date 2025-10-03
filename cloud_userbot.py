@@ -205,39 +205,42 @@ class CloudUserBot:
                 # Create internal link for private groups
                 group_link = f"tg://openmessage?chat_id={chat.id}&message_id={message.id}"
             
-            # Create clickable notification message
+            # Create clickable notification message with full text
             notification = f"""🚨 **رسالة جديدة تحتوي على كلمات مفتاحية!**
 
 👥 **المجموعة:** {chat_name}
-👤 **المرسل:** [{sender_name}](tg://user?id={sender.id})
+👤 **المرسل:** {sender_name}
 🆔 **المعرف:** {'@' + sender_username if sender_username else 'لا يوجد'}
 🔑 **الكلمات المفتاحية:** {', '.join(keywords)}
 ⏰ **الوقت:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 ☁️ **المصدر:** خادم سحابي
 
-📝 **الرسالة:**
+📝 **الرسالة الكاملة:**
 {message.text}
 
 ---
-💬 **انقر على اسم المرسل أعلاه للذهاب إليه مباشرة**
-🔗 **رابط الشخص:** tg://user?id={sender.id}
+💬 **للذهاب للشخص انسخ هذا الرابط:**
+`tg://user?id={sender.id}`
+
+🔗 **أو ابحث عن المعرف:** {'@' + sender_username if sender_username else f'ID: {sender.id}'}
 📱 **رابط الرسالة:** {group_link}"""
             
             # Send notification with parse_mode for clickable links
             await self.client.send_message('me', notification, parse_mode='markdown')
             logger.info(f"✅ Sent clickable notification for message from {sender_name} in {chat_name}")
             
-            # Create a bot to send push notifications (this will trigger phone notifications)
-            # Send to a private chat with yourself using your user ID
+            # Create push notification with better contact method
             push_notification = f"""🔔 **إشعار كلمة مفتاحية!**
 
 🚨 **{', '.join(keywords)}**
 👤 **{sender_name}**
 👥 **{chat_name}**
 
-📝 "{message.text[:80]}{'...' if len(message.text) > 80 else ''}"
+📝 **الرسالة الكاملة:**
+{message.text}
 
-💬 [اذهب للشخص](tg://user?id={sender.id})"""
+💬 **للتواصل:**
+{'@' + sender_username if sender_username else f'انسخ: tg://user?id={sender.id}'}"""
             
             # Send to self using user ID (this triggers notifications better than 'me')
             await self.client.send_message(self.my_user_id, push_notification, parse_mode='markdown')
@@ -256,9 +259,14 @@ class CloudUserBot:
 👤 من: **{sender_name}**
 👥 في: **{chat_name}**
 
-📝 "{message.text[:100]}{'...' if len(message.text) > 100 else ''}"
+📝 **الرسالة الكاملة:**
+{message.text}
 
-💬 [اذهب للشخص](tg://user?id={sender.id})"""
+💬 **للتواصل:**
+{'@' + sender_username if sender_username else f'انسخ الرابط: tg://user?id={sender.id}'}
+
+🔗 **رابط مباشر:**
+`tg://user?id={sender.id}`"""
                 
                 await self.client.send_message(self.notification_channel, channel_alert, parse_mode='markdown')
                 logger.info("✅ Sent notification to private channel")
@@ -267,7 +275,15 @@ class CloudUserBot:
             logger.error(f"❌ Error sending notification: {e}")
             # Try simple notification as backup
             try:
-                simple_msg = f"🚨 كلمة مفتاحية: {', '.join(keywords)}\n📝 {message.text[:100]}..."
+                simple_msg = f"""🚨 كلمة مفتاحية: {', '.join(keywords)}
+
+👤 من: {sender_name}
+👥 في: {chat_name}
+
+📝 الرسالة الكاملة:
+{message.text}
+
+💬 للتواصل: {'@' + sender_username if sender_username else f'tg://user?id={sender.id}'}"""
                 await self.send_to_self(simple_msg)
                 logger.info("✅ Sent simple notification as backup")
             except Exception as e2:
