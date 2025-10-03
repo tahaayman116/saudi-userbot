@@ -331,15 +331,36 @@ class CloudUserBot:
 {message.text}
 
 ---
-💬 **للذهاب للشخص انسخ هذا الرابط:**
-`tg://user?id={sender.id}`
+💬 **للتواصل مع الشخص اضغط الزر أدناه ⬇️**
 
 🔗 **أو ابحث عن المعرف:** {'@' + sender_username if sender_username else f'ID: {sender.id}'}
 📱 **رابط الرسالة:** {group_link}"""
             
-            # Send notification with parse_mode for clickable links
-            await self.client.send_message('me', notification, parse_mode='markdown')
-            logger.info(f"✅ Sent clickable notification for message from {sender_name} in {chat_name}")
+            # Create inline keyboard with clickable button
+            from telethon.tl.types import KeyboardButtonUrl
+            from telethon.tl.types import ReplyInlineMarkup
+            
+            # Create button for direct contact
+            contact_button = KeyboardButtonUrl(
+                text="💬 اذهب للشخص",
+                url=f"tg://user?id={sender.id}"
+            )
+            
+            # Create message button if we have group link
+            buttons = [contact_button]
+            if group_link != "غير متاح" and group_link.startswith('tg://'):
+                message_button = KeyboardButtonUrl(
+                    text="📱 اذهب للرسالة", 
+                    url=group_link
+                )
+                buttons.append(message_button)
+            
+            # Create inline keyboard
+            keyboard = ReplyInlineMarkup([buttons])
+            
+            # Send notification with inline buttons
+            await self.client.send_message('me', notification, parse_mode='markdown', buttons=keyboard)
+            logger.info(f"✅ Sent clickable notification with buttons for message from {sender_name} in {chat_name}")
             
             # Create push notification with better contact method
             push_notification = f"""🔔 **إشعار كلمة مفتاحية!**
@@ -354,9 +375,16 @@ class CloudUserBot:
 💬 **للتواصل:**
 {'@' + sender_username if sender_username else f'انسخ: tg://user?id={sender.id}'}"""
             
+            # Create simple button for push notification
+            simple_button = KeyboardButtonUrl(
+                text="💬 تواصل مع الشخص",
+                url=f"tg://user?id={sender.id}"
+            )
+            simple_keyboard = ReplyInlineMarkup([[simple_button]])
+            
             # Send to self using user ID (this triggers notifications better than 'me')
-            await self.client.send_message(self.my_user_id, push_notification, parse_mode='markdown')
-            logger.info("✅ Sent push notification to user ID")
+            await self.client.send_message(self.my_user_id, push_notification, parse_mode='markdown', buttons=simple_keyboard)
+            logger.info("✅ Sent push notification to user ID with button")
             
             # Also try sending a simple text message for maximum notification visibility
             simple_alert = f"🚨 {', '.join(keywords)} من {sender_name} في {chat_name}"
@@ -380,8 +408,15 @@ class CloudUserBot:
 🔗 **رابط مباشر:**
 `tg://user?id={sender.id}`"""
                 
-                await self.client.send_message(self.notification_channel, channel_alert, parse_mode='markdown')
-                logger.info("✅ Sent notification to private channel")
+                # Create button for channel notification
+                channel_button = KeyboardButtonUrl(
+                    text="💬 اذهب للشخص",
+                    url=f"tg://user?id={sender.id}"
+                )
+                channel_keyboard = ReplyInlineMarkup([[channel_button]])
+                
+                await self.client.send_message(self.notification_channel, channel_alert, parse_mode='markdown', buttons=channel_keyboard)
+                logger.info("✅ Sent notification to private channel with button")
             
         except Exception as e:
             logger.error(f"❌ Error sending notification: {e}")
