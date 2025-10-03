@@ -55,6 +55,9 @@ class CloudUserBot:
             "ابغى", "ودي", "عايز", "بدي", "اريد واحد", "محتاج واحد"
         ]
         
+        # Try to create/find a private channel for notifications
+        self.notification_channel = None
+        
         self.monitored_groups = set()
         self.my_user_id = None
         self.running = True
@@ -86,6 +89,9 @@ class CloudUserBot:
             
             # Enable catch up for missed messages (important for 900+ groups)
             await self.client.catch_up()
+            
+            # Try to create a private channel for better notifications
+            await self.setup_notification_channel()
             
             # Register event handlers with filters for better performance
             self.client.add_event_handler(
@@ -122,6 +128,31 @@ class CloudUserBot:
         except Exception as e:
             logger.error(f"Error starting bot: {e}")
             return False
+
+    async def setup_notification_channel(self):
+        """Setup a private channel for better push notifications"""
+        try:
+            # Try to find existing notification channel
+            async for dialog in self.client.iter_dialogs():
+                if hasattr(dialog.entity, 'title') and dialog.entity.title == "🔔 إشعارات البوت":
+                    self.notification_channel = dialog.entity
+                    logger.info("Found existing notification channel")
+                    return
+            
+            # Create new private channel if not found
+            from telethon.tl.functions.channels import CreateChannelRequest
+            result = await self.client(CreateChannelRequest(
+                title="🔔 إشعارات البوت",
+                about="قناة خاصة لإشعارات البوت - لا تحذفها",
+                megagroup=False
+            ))
+            
+            self.notification_channel = result.chats[0]
+            logger.info("Created new notification channel")
+            
+        except Exception as e:
+            logger.warning(f"Could not setup notification channel: {e}")
+            self.notification_channel = None
 
     async def handle_new_message(self, event):
         """Handle new messages in groups - optimized for 900+ groups"""
@@ -196,20 +227,41 @@ class CloudUserBot:
             await self.client.send_message('me', notification, parse_mode='markdown')
             logger.info(f"✅ Sent clickable notification for message from {sender_name} in {chat_name}")
             
-            # Send additional notification for mobile push notifications
-            push_notification = f"""🔔 **إشعار فوري!**
+            # Create a bot to send push notifications (this will trigger phone notifications)
+            # Send to a private chat with yourself using your user ID
+            push_notification = f"""🔔 **إشعار كلمة مفتاحية!**
 
-🚨 كلمة مفتاحية: **{', '.join(keywords)}**
+🚨 **{', '.join(keywords)}**
+👤 **{sender_name}**
+👥 **{chat_name}**
+
+📝 "{message.text[:80]}{'...' if len(message.text) > 80 else ''}"
+
+💬 [اذهب للشخص](tg://user?id={sender.id})"""
+            
+            # Send to self using user ID (this triggers notifications better than 'me')
+            await self.client.send_message(self.my_user_id, push_notification, parse_mode='markdown')
+            logger.info("✅ Sent push notification to user ID")
+            
+            # Also try sending a simple text message for maximum notification visibility
+            simple_alert = f"🚨 {', '.join(keywords)} من {sender_name} في {chat_name}"
+            await self.client.send_message(self.my_user_id, simple_alert)
+            logger.info("✅ Sent simple alert notification")
+            
+            # If notification channel exists, send there too (channels give better notifications)
+            if self.notification_channel:
+                channel_alert = f"""🔔 **إشعار جديد!**
+
+🚨 **{', '.join(keywords)}**
 👤 من: **{sender_name}**
 👥 في: **{chat_name}**
 
 📝 "{message.text[:100]}{'...' if len(message.text) > 100 else ''}"
 
-💬 [اضغط هنا للذهاب للشخص](tg://user?id={sender.id})"""
-            
-            # Send as separate message for better notification visibility
-            await self.client.send_message('me', push_notification, parse_mode='markdown')
-            logger.info("✅ Sent push notification")
+💬 [اذهب للشخص](tg://user?id={sender.id})"""
+                
+                await self.client.send_message(self.notification_channel, channel_alert, parse_mode='markdown')
+                logger.info("✅ Sent notification to private channel")
             
         except Exception as e:
             logger.error(f"❌ Error sending notification: {e}")
