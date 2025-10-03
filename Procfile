@@ -1,1 +1,1 @@
-worker: python cloud_userbot.py
+worker: python debug_userbot.py
