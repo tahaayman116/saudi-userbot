@@ -158,16 +158,18 @@ class CloudUserBot:
     async def send_notification(self, message, chat, keywords):
         """Send notification to self"""
         try:
-            # Get sender info
+            # Get sender info safely
             sender = await message.get_sender()
             sender_name = getattr(sender, 'first_name', 'غير معروف')
             sender_username = getattr(sender, 'username', None)
             
+            # Get chat info safely
+            chat_name = getattr(chat, 'title', getattr(chat, 'first_name', 'مجموعة غير معروفة'))
+            
             # Create notification message
-            notification = f"""
-🚨 **رسالة جديدة تحتوي على كلمات مفتاحية!**
+            notification = f"""🚨 **رسالة جديدة تحتوي على كلمات مفتاحية!**
 
-👥 **المجموعة:** {chat.title}
+👥 **المجموعة:** {chat_name}
 👤 **المرسل:** {sender_name}
 🆔 **المعرف:** {'@' + sender_username if sender_username else 'لا يوجد'}
 🔑 **الكلمات المفتاحية:** {', '.join(keywords)}
@@ -178,14 +180,20 @@ class CloudUserBot:
 {message.text}
 
 ---
-💬 **للرد:** {'@' + sender_username if sender_username else f"tg://user?id={sender.id}"}
-            """
+💬 **للرد:** {'@' + sender_username if sender_username else f"tg://user?id={sender.id}"}"""
             
             await self.send_to_self(notification)
-            logger.info(f"Sent cloud notification for message from {sender_name} in {chat.title}")
+            logger.info(f"✅ Sent notification for message from {sender_name} in {chat_name}")
             
         except Exception as e:
-            logger.error(f"Error sending notification: {e}")
+            logger.error(f"❌ Error sending notification: {e}")
+            # Try simple notification as backup
+            try:
+                simple_msg = f"🚨 كلمة مفتاحية: {', '.join(keywords)}\n📝 {message.text[:100]}..."
+                await self.send_to_self(simple_msg)
+                logger.info("✅ Sent simple notification as backup")
+            except Exception as e2:
+                logger.error(f"❌ Backup notification also failed: {e2}")
 
     async def send_to_self(self, message):
         """Send message to self (Saved Messages)"""
