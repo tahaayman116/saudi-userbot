@@ -129,8 +129,10 @@ class CloudUserBot:
 💡 **للاختبار:** اكتب في أي مجموعة رسالة تحتوي على إحدى الكلمات أعلاه
 
 🎛️ **أوامر التحكم (في Saved Messages):**
-• `+كلمة` - إضافة كلمة مفتاحية
-• `-كلمة` - حذف كلمة مفتاحية  
+• `+كلمة` - إضافة كلمة واحدة
+• `+كلمة1، كلمة2، كلمة3` - إضافة كلمات متعددة
+• `-كلمة` - حذف كلمة واحدة
+• `-كلمة1، كلمة2، كلمة3` - حذف كلمات متعددة
 • `#عرض` - عرض جميع الكلمات
 • `!احصائيات` - عرض إحصائيات البوت"""
             
@@ -188,41 +190,123 @@ class CloudUserBot:
             # Add keyword command: +كلمة
             if text.startswith('+'):
                 keyword = text[1:].strip()
-                if keyword and keyword not in self.keywords:
-                    self.keywords.append(keyword)
-                    await self.save_keywords()
-                    response = f"✅ **تم إضافة الكلمة المفتاحية:**\n`{keyword}`\n\n📊 **العدد الحالي:** {len(self.keywords)} كلمة"
-                    # Add small delay to avoid message conflicts
-                    await asyncio.sleep(0.5)
-                    await self.client.send_message('me', response, parse_mode='markdown')
-                    logger.info(f"Added keyword: {keyword}")
-                elif keyword in self.keywords:
-                    response = f"⚠️ **الكلمة موجودة بالفعل:**\n`{keyword}`"
-                    await asyncio.sleep(0.5)
-                    await self.client.send_message('me', response, parse_mode='markdown')
+                
+                # Check if multiple keywords (separated by comma, semicolon, or newline)
+                if any(sep in keyword for sep in [',', '،', ';', '؛', '\n']):
+                    # Multiple keywords
+                    separators = [',', '،', ';', '؛', '\n']
+                    keywords_to_add = [keyword]
+                    
+                    # Split by all possible separators
+                    for sep in separators:
+                        temp_list = []
+                        for kw in keywords_to_add:
+                            temp_list.extend([k.strip() for k in kw.split(sep) if k.strip()])
+                        keywords_to_add = temp_list
+                    
+                    # Remove duplicates and empty strings
+                    keywords_to_add = list(set([kw for kw in keywords_to_add if kw and kw not in self.keywords]))
+                    
+                    if keywords_to_add:
+                        self.keywords.extend(keywords_to_add)
+                        await self.save_keywords()
+                        
+                        keywords_list = '\n'.join([f"• `{kw}`" for kw in keywords_to_add])
+                        response = f"""✅ **تم إضافة {len(keywords_to_add)} كلمة مفتاحية:**
+
+{keywords_list}
+
+📊 **العدد الإجمالي:** {len(self.keywords)} كلمة"""
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                        logger.info(f"Added {len(keywords_to_add)} keywords: {keywords_to_add}")
+                    else:
+                        response = "⚠️ **جميع الكلمات موجودة بالفعل أو فارغة**"
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                        
                 else:
-                    response = "❌ **خطأ:** يرجى كتابة كلمة صحيحة\n**مثال:** `+يساعدني`"
-                    await asyncio.sleep(0.5)
-                    await self.client.send_message('me', response, parse_mode='markdown')
+                    # Single keyword (original logic)
+                    if keyword and keyword not in self.keywords:
+                        self.keywords.append(keyword)
+                        await self.save_keywords()
+                        response = f"✅ **تم إضافة الكلمة المفتاحية:**\n`{keyword}`\n\n📊 **العدد الحالي:** {len(self.keywords)} كلمة"
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                        logger.info(f"Added keyword: {keyword}")
+                    elif keyword in self.keywords:
+                        response = f"⚠️ **الكلمة موجودة بالفعل:**\n`{keyword}`"
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                    else:
+                        response = """❌ **خطأ:** يرجى كتابة كلمة صحيحة
+
+**أمثلة:**
+• `+يساعدني` - إضافة كلمة واحدة
+• `+يساعدني، ابي حد، محتاج` - إضافة كلمات متعددة"""
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
             
             # Remove keyword command: -كلمة
             elif text.startswith('-'):
                 keyword = text[1:].strip()
-                if keyword and keyword in self.keywords:
-                    self.keywords.remove(keyword)
-                    await self.save_keywords()
-                    response = f"✅ **تم حذف الكلمة المفتاحية:**\n`{keyword}`\n\n📊 **العدد الحالي:** {len(self.keywords)} كلمة"
-                    await asyncio.sleep(0.5)
-                    await self.client.send_message('me', response, parse_mode='markdown')
-                    logger.info(f"Removed keyword: {keyword}")
-                elif keyword not in self.keywords:
-                    response = f"⚠️ **الكلمة غير موجودة:**\n`{keyword}`"
-                    await asyncio.sleep(0.5)
-                    await self.client.send_message('me', response, parse_mode='markdown')
+                
+                # Check if multiple keywords (separated by comma, semicolon, or newline)
+                if any(sep in keyword for sep in [',', '،', ';', '؛', '\n']):
+                    # Multiple keywords
+                    separators = [',', '،', ';', '؛', '\n']
+                    keywords_to_remove = [keyword]
+                    
+                    # Split by all possible separators
+                    for sep in separators:
+                        temp_list = []
+                        for kw in keywords_to_remove:
+                            temp_list.extend([k.strip() for k in kw.split(sep) if k.strip()])
+                        keywords_to_remove = temp_list
+                    
+                    # Filter only existing keywords
+                    existing_keywords = [kw for kw in keywords_to_remove if kw in self.keywords]
+                    
+                    if existing_keywords:
+                        for kw in existing_keywords:
+                            self.keywords.remove(kw)
+                        await self.save_keywords()
+                        
+                        keywords_list = '\n'.join([f"• `{kw}`" for kw in existing_keywords])
+                        response = f"""✅ **تم حذف {len(existing_keywords)} كلمة مفتاحية:**
+
+{keywords_list}
+
+📊 **العدد الإجمالي:** {len(self.keywords)} كلمة"""
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                        logger.info(f"Removed {len(existing_keywords)} keywords: {existing_keywords}")
+                    else:
+                        response = "⚠️ **لا توجد كلمات صحيحة للحذف**"
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                        
                 else:
-                    response = "❌ **خطأ:** يرجى كتابة كلمة صحيحة\n**مثال:** `-يساعدني`"
-                    await asyncio.sleep(0.5)
-                    await self.client.send_message('me', response, parse_mode='markdown')
+                    # Single keyword (original logic)
+                    if keyword and keyword in self.keywords:
+                        self.keywords.remove(keyword)
+                        await self.save_keywords()
+                        response = f"✅ **تم حذف الكلمة المفتاحية:**\n`{keyword}`\n\n📊 **العدد الحالي:** {len(self.keywords)} كلمة"
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                        logger.info(f"Removed keyword: {keyword}")
+                    elif keyword not in self.keywords:
+                        response = f"⚠️ **الكلمة غير موجودة:**\n`{keyword}`"
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
+                    else:
+                        response = """❌ **خطأ:** يرجى كتابة كلمة صحيحة
+
+**أمثلة:**
+• `-يساعدني` - حذف كلمة واحدة
+• `-يساعدني، ابي حد، محتاج` - حذف كلمات متعددة"""
+                        await asyncio.sleep(0.5)
+                        await self.client.send_message('me', response, parse_mode='markdown')
             
             # Show all keywords: #عرض
             elif text.startswith('#'):
@@ -261,8 +345,10 @@ class CloudUserBot:
 🆔 **معرف المستخدم:** {self.my_user_id}
 
 🎛️ **أوامر التحكم:**
-• `+كلمة` - إضافة كلمة مفتاحية
-• `-كلمة` - حذف كلمة مفتاحية  
+• `+كلمة` - إضافة كلمة واحدة
+• `+كلمة1، كلمة2، كلمة3` - إضافة كلمات متعددة
+• `-كلمة` - حذف كلمة واحدة
+• `-كلمة1، كلمة2، كلمة3` - حذف كلمات متعددة
 • `#عرض` - عرض جميع الكلمات
 • `!احصائيات` - عرض هذه المعلومات"""
                     await asyncio.sleep(0.5)
