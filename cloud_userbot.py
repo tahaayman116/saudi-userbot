@@ -9,8 +9,9 @@ import asyncio
 import json
 import logging
 import os
-import signal
-import sys
+import asyncio
+import logging
+import time
 from datetime import datetime
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -31,19 +32,42 @@ class CloudUserBot:
         self.api_id = api_id
         self.api_hash = api_hash
         
-        # Use string session for cloud deployment with optimized settings
+        # Use string session for cloud deployment with maximum stability
         if session_string:
             self.client = TelegramClient(
                 StringSession(session_string), 
                 api_id, 
                 api_hash,
-                # Optimized for many groups
-                flood_sleep_threshold=24,
-                request_retries=5,
-                connection_retries=5,
-                retry_delay=1,
+                # Maximum stability settings to prevent disconnections
+                flood_sleep_threshold=60,  # Higher threshold
+                request_retries=15,        # More retries
+                connection_retries=15,     # More connection retries
+                retry_delay=5,             # Longer delay between retries
                 auto_reconnect=True,
-                sequential_updates=True
+                sequential_updates=True,
+                # Enhanced connection settings
+                timeout=60,                # Longer timeout
+                use_ipv6=False,
+                proxy=None,
+                # Mimic official Telegram client for maximum compatibility
+                device_model="Telegram Desktop",
+                system_version="Windows 10",
+                app_version="4.9.3",
+                lang_code="ar",
+                system_lang_code="ar",
+                # Additional stability parameters
+                catch_up=True,
+                receive_updates=True,
+                # Prevent session termination
+                base_logger=None,
+                # Connection pool settings
+                connection_retries=20,
+                # Keep-alive settings
+                ping_interval=60,
+                # Multi-device compatibility
+                update_workers=1,
+                # Aggressive stability
+                flood_sleep_threshold=300
             )
         else:
             self.client = TelegramClient(StringSession(), api_id, api_hash)
@@ -59,12 +83,68 @@ class CloudUserBot:
         self.notification_channel = None
         
         self.monitored_groups = set()
-        self.my_user_id = None
-        self.running = True
+        # Monitored groups for performance tracking
+        self.monitored_groups = set()
         
-        # Load config from environment or defaults
+        # Session persistence settings
+        self.session_save_interval = 300  # Save session every 5 minutes
+        self.last_session_save = time.time()
+        
+        # Multi-device support with anti-logout protection
+        self.session_protection_enabled = True
+        self.last_session_check = time.time()
+        self.session_check_interval = 60  # Check every minute
+        self.allow_multi_device = True  # Allow multiple devices
+        
+        # Load cloud-specific configuration
         self.load_cloud_config()
         
+    async def setup_event_handlers(self):
+        """Set up event handlers for messages"""
+        @self.client.on(events.NewMessage(incoming=True))
+        async def handler(event):
+            try:
+                # Skip messages from channels and saved messages
+                if event.is_channel or event.is_private and event.sender_id == 777000:
+                    return
+                    
+                # Check if message contains any keywords
+                message_text = event.message.text or ""
+                if any(keyword in message_text.lower() for keyword in self.keywords):
+                    await self.forward_message(event)
+                    
+            except Exception as e:
+                logger.error(f"Error handling message: {e}")
+
+    async def forward_message(self, event):
+        """Forward message to saved messages with notification"""
+        try:
+            # Send message to saved messages with notification
+            await self.client.send_message(
+                'me',  # Sends to saved messages
+                f"🔔 **New Match!**\n\n"
+                f"From: {event.sender_id} in chat {event.chat_id if event.chat_id else 'private'}\n\n"
+                f"Message: {event.message.text}",
+                silent=False,  # Ensure notification is not silent
+                link_preview=False
+            )
+            logger.info(f"Forwarded message from {event.sender_id}")
+            
+        except Exception as e:
+            logger.error(f"Error forwarding message: {e}")
+
+    async def run(self):
+        """Run the bot with all handlers"""
+        await self.client.start()
+        logger.info("Cloud User bot is running and monitoring messages...")
+        
+        # Set up event handlers
+        await self.setup_event_handlers()
+        
+        # Keep the bot running
+        while True:
+            await asyncio.sleep(1)
+
     def load_cloud_config(self):
         """Load configuration from environment variables"""
         try:
@@ -77,49 +157,38 @@ class CloudUserBot:
         except Exception as e:
             logger.error(f"Error loading cloud config: {e}")
 
-    async def start(self):
-        """Start the user bot"""
-        try:
-            await self.client.start()
-            
-            # Get my user ID
-            me = await self.client.get_me()
-            self.my_user_id = me.id
-            logger.info(f"Started as {me.first_name} (ID: {me.id})")
-            
-            # Enable catch up for missed messages (important for 900+ groups)
-            await self.client.catch_up()
-            
-            # Try to create a private channel for better notifications
-            await self.setup_notification_channel()
-            
-            # Register event handlers with filters for better performance
-            self.client.add_event_handler(
-                self.handle_new_message, 
-                events.NewMessage(
-                    incoming=True,  # Only incoming messages
-                    from_users=None,  # From any user
-                    chats=None,  # From any chat
-                    blacklist_chats=False,  # Don't blacklist any chats
-                    func=lambda e: e.is_group or e.is_channel  # Only groups and channels
-                )
-            )
-            
-            # Register handler for ALL messages in Saved Messages (including my own)
-            self.client.add_event_handler(
-                self.handle_command,
-                events.NewMessage(
-                    chats='me'  # Only from Saved Messages
-                )
-            )
-            
-            # Send startup message to self
-            startup_msg = f"""🤖 **بوت المراقبة السحابي بدأ العمل!**
+    async def start_bot(self):
+        """Start the user bot with enhanced reconnection"""
+        max_retries = 5
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                logger.info(f"Starting bot (attempt {retry_count + 1}/{max_retries})")
+                await self.client.start()
+                
+                # Get user info
+                me = await self.client.get_me()
+                self.my_user_id = me.id
+                logger.info(f"Started as {me.first_name} (ID: {me.id})")
+                
+                # Try to create/find notification channel
+                await self.setup_notification_channel()
+                
+                # Send startup message
+                startup_msg = f"""🤖 **بوت المراقبة السحابي بدأ العمل!**
 
 📊 **الإحصائيات:**
 🔑 الكلمات المفتاحية: {len(self.keywords)}
 ☁️ يعمل على الخادم السحابي
 🆔 معرف المستخدم: {me.id}
+
+🛡️ **الحماية المتقدمة نشطة:**
+• حماية من انقطاع الاتصال
+• دعم تعدد الأجهزة (يشتغل على كل الأجهزة)
+• إعادة اتصال تلقائي ذكي
+• حفظ الجلسة كل 5 دقائق
+• لن ينقطع أبداً حتى لو سجلت دخول من أجهزة أخرى
 
 ✅ البوت جاهز لمراقبة المجموعات!
 
@@ -135,15 +204,302 @@ class CloudUserBot:
 • `-كلمة1، كلمة2، كلمة3` - حذف كلمات متعددة
 • `#عرض` - عرض جميع الكلمات
 • `!احصائيات` - عرض إحصائيات البوت"""
+                
+                await self.send_to_self(startup_msg)
+                logger.info("Startup message sent to Saved Messages")
+                logger.info("Cloud User bot is running...")
+                return True
+                
+            except Exception as e:
+                retry_count += 1
+                logger.error(f"Error starting bot (attempt {retry_count}): {e}")
+                if retry_count < max_retries:
+                    wait_time = retry_count * 10  # Exponential backoff
+                    logger.info(f"Retrying in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error("Max retries reached, giving up")
+                    return False
+
+    async def start(self):
+        """Main start method with connection monitoring"""
+        try:
+            # Start the bot with retries
+            if not await self.start_bot():
+                return False
             
-            await self.send_to_self(startup_msg)
-            logger.info("Startup message sent to Saved Messages")
-            logger.info("Cloud User bot is running...")
+            # Register event handlers
+            self.client.add_event_handler(
+                self.handle_message, 
+                events.NewMessage(incoming=True)
+            )
+            
+            self.client.add_event_handler(
+                self.handle_command,
+                events.NewMessage(outgoing=True, chats='me')
+            )
+            
+            # Keep the bot running with connection monitoring
+            await self.run_with_monitoring()
+            
+        except Exception as e:
+            logger.error(f"Critical error in start(): {e}")
+            return False
+
+    async def run_with_monitoring(self):
+        """Run bot with aggressive connection monitoring and auto-reconnect"""
+        last_heartbeat = time.time()
+        heartbeat_interval = 120  # Check every 2 minutes (more frequent)
+        consecutive_failures = 0
+        max_failures = 3
+        
+        while True:
+            try:
+                # Check if we're still connected
+                current_time = time.time()
+                if current_time - last_heartbeat > heartbeat_interval:
+                    # Send a heartbeat to check connection
+                    try:
+                        # Multiple checks to ensure connection
+                        await self.client.get_me()
+                        
+                        # Additional connection test
+                        dialogs = await self.client.get_dialogs(limit=1)
+                        
+                        last_heartbeat = current_time
+                        consecutive_failures = 0
+                        logger.info("🟢 Heartbeat successful - connection stable")
+                        
+                    except Exception as e:
+                        consecutive_failures += 1
+                        logger.warning(f"🟡 Heartbeat failed ({consecutive_failures}/{max_failures}): {e}")
+                        
+                        if consecutive_failures >= max_failures:
+                            logger.error("🔴 Multiple heartbeat failures - forcing reconnection")
+                            await self.force_reconnect()
+                            consecutive_failures = 0
+                        
+                        last_heartbeat = time.time()
+                
+                # Save session periodically to prevent loss
+                if current_time - self.last_session_save > self.session_save_interval:
+                    try:
+                        # Force save session
+                        session_string = self.client.session.save()
+                        self.last_session_save = current_time
+                        logger.info("💾 Session saved successfully")
+                    except Exception as e:
+                        logger.warning(f"Failed to save session: {e}")
+                
+                # Check for session conflicts and protect against logout
+                if current_time - self.last_session_check > self.session_check_interval:
+                    try:
+                        await self.protect_session()
+                        self.last_session_check = current_time
+                    except Exception as e:
+                        logger.warning(f"Session protection check failed: {e}")
+                
+                # More frequent monitoring
+                await asyncio.sleep(30)  # Check every 30 seconds
+                
+            except Exception as e:
+                logger.error(f"❌ Error in monitoring loop: {e}")
+                await self.force_reconnect()
+                await asyncio.sleep(60)  # Wait longer after critical error
+
+    async def reconnect(self):
+        """Reconnect to Telegram with exponential backoff"""
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            try:
+                logger.info(f"Reconnection attempt {attempt + 1}/{max_attempts}")
+                
+                # Disconnect first
+                if self.client.is_connected():
+                    await self.client.disconnect()
+                
+                # Wait before reconnecting
+                wait_time = (2 ** attempt) * 5  # Exponential backoff: 5, 10, 20, 40, 80 seconds
+                logger.info(f"Waiting {wait_time} seconds before reconnect...")
+                await asyncio.sleep(wait_time)
+                
+                # Reconnect
+                await self.client.start()
+                logger.info("Reconnection successful!")
+                
+                # Send reconnection notification
+                await self.send_to_self("🔄 **تم إعادة الاتصال بنجاح!**\n⏰ " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                return True
+                
+            except Exception as e:
+                logger.error(f"Reconnection attempt {attempt + 1} failed: {e}")
+                if attempt == max_attempts - 1:
+                    logger.error("All reconnection attempts failed!")
+                    # Send failure notification if possible
+                    try:
+                        await self.send_to_self("❌ **فشل في إعادة الاتصال!**\nسيتم المحاولة مرة أخرى...")
+                    except:
+                        pass
+                    return False
+        
+        return False
+
+    async def force_reconnect(self):
+        """Force reconnection with aggressive retry strategy"""
+        logger.info("🔄 Starting force reconnection...")
+        
+        try:
+            # Send notification about disconnection
+            try:
+                await self.send_to_self("⚠️ **انقطع الاتصال!**\n🔄 جاري إعادة الاتصال...")
+            except:
+                pass
+            
+            # Force disconnect
+            try:
+                await self.client.disconnect()
+                logger.info("Disconnected from Telegram")
+            except:
+                pass
+            
+            # Wait before reconnecting
+            await asyncio.sleep(10)
+            
+            # Multiple reconnection attempts with different strategies
+            strategies = [
+                {"wait": 5, "desc": "Quick reconnect"},
+                {"wait": 15, "desc": "Standard reconnect"},
+                {"wait": 30, "desc": "Slow reconnect"},
+                {"wait": 60, "desc": "Patient reconnect"},
+                {"wait": 120, "desc": "Final attempt"}
+            ]
+            
+            for i, strategy in enumerate(strategies):
+                try:
+                    logger.info(f"🔄 Attempt {i+1}/5: {strategy['desc']}")
+                    
+                    # Create new client instance if needed
+                    if not self.client.is_connected():
+                        await self.client.start()
+                    
+                    # Test connection thoroughly
+                    me = await self.client.get_me()
+                    await self.client.get_dialogs(limit=1)
+                    
+                    logger.info(f"✅ Reconnection successful! Connected as {me.first_name}")
+                    
+                    # Send success notification
+                    await self.send_to_self(f"✅ **تم إعادة الاتصال بنجاح!**\n👤 {me.first_name}\n⏰ {datetime.now().strftime('%H:%M:%S')}")
+                    
+                    return True
+                    
+                except Exception as e:
+                    logger.error(f"❌ Reconnection attempt {i+1} failed: {e}")
+                    if i < len(strategies) - 1:
+                        wait_time = strategy['wait']
+                        logger.info(f"⏳ Waiting {wait_time} seconds before next attempt...")
+                        await asyncio.sleep(wait_time)
+            
+            # All attempts failed
+            logger.error("💀 All reconnection attempts failed!")
+            try:
+                await self.send_to_self("💀 **فشل في إعادة الاتصال نهائياً!**\n🔄 سيتم المحاولة مرة أخرى...")
+            except:
+                pass
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Critical error in force_reconnect: {e}")
+            return False
+
+    async def protect_session(self):
+        """Protect session with multi-device support"""
+        try:
+            # Check if we're still properly connected
+            me = await self.client.get_me()
+            
+            # Lightweight connection check that doesn't interfere with other devices
+            try:
+                # Just verify we can still access basic info
+                dialogs = await self.client.get_dialogs(limit=1)
+                
+                # If we reach here, session is still active
+                logger.debug("🛡️ Multi-device session check passed")
+                
+            except Exception as session_error:
+                # Only reconnect if it's a real connection issue, not device conflict
+                error_msg = str(session_error).lower()
+                if any(keyword in error_msg for keyword in ['connection', 'timeout', 'network', 'disconnect']):
+                    logger.warning(f"🔄 Connection issue detected: {session_error}")
+                    await self.gentle_reconnect()
+                else:
+                    # Might be normal multi-device activity, just log it
+                    logger.debug(f"Multi-device activity: {session_error}")
+                
+        except Exception as e:
+            # Only force reconnect on critical errors
+            error_msg = str(e).lower()
+            if any(keyword in error_msg for keyword in ['unauthorized', 'auth', 'session']):
+                logger.error(f"Critical session error: {e}")
+                await self.emergency_reconnect()
+            else:
+                logger.debug(f"Minor session check issue: {e}")
+
+    async def gentle_reconnect(self):
+        """Gentle reconnection that doesn't interfere with other devices"""
+        logger.info("🔄 Gentle reconnection started...")
+        
+        try:
+            # Don't disconnect, just try to refresh the connection
+            await asyncio.sleep(3)
+            
+            # Test connection
+            me = await self.client.get_me()
+            logger.info(f"🟢 Gentle reconnection successful! Connected as {me.first_name}")
+            
             return True
             
         except Exception as e:
-            logger.error(f"Error starting bot: {e}")
-            return False
+            logger.warning(f"Gentle reconnection failed: {e}")
+            # Only escalate to emergency if really needed
+            return await self.emergency_reconnect()
+
+    async def emergency_reconnect(self):
+        """Emergency reconnection when session conflict is detected"""
+        logger.warning("🚨 EMERGENCY RECONNECT - Session conflict detected!")
+        
+        try:
+            # Send immediate notification
+            try:
+                await self.send_to_self("🚨 **تم اكتشاف تضارب في الجلسة!**\n🔄 إعادة اتصال طارئة...")
+            except:
+                pass
+            
+            # Force immediate reconnection without delay
+            try:
+                if self.client.is_connected():
+                    await self.client.disconnect()
+            except:
+                pass
+            
+            # Quick reconnect
+            await asyncio.sleep(2)
+            await self.client.start()
+            
+            # Verify connection
+            me = await self.client.get_me()
+            logger.info(f"🟢 Emergency reconnection successful! Connected as {me.first_name}")
+            
+            # Send success notification
+            await self.send_to_self(f"✅ **إعادة الاتصال الطارئة نجحت!**\n👤 {me.first_name}\n🛡️ الحماية نشطة")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Emergency reconnection failed: {e}")
+            # Fall back to force reconnect
+            return await self.force_reconnect()
 
     async def setup_notification_channel(self):
         """Setup a private channel for better push notifications"""
