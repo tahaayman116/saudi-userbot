@@ -57,11 +57,7 @@ class CloudUserBot:
                 system_lang_code="ar",
                 # Additional stability parameters
                 catch_up=True,
-                receive_updates=True,
-                # Prevent session termination
-                base_logger=None,
-                # Multi-device compatibility
-                update_workers=1
+                receive_updates=True
             )
         else:
             self.client = TelegramClient(StringSession(), api_id, api_hash)
