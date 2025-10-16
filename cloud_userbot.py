@@ -60,8 +60,6 @@ class CloudUserBot:
                 receive_updates=True,
                 # Prevent session termination
                 base_logger=None,
-                # Keep-alive settings
-                ping_interval=60,
                 # Multi-device compatibility
                 update_workers=1
             )
