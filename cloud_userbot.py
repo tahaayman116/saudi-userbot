@@ -9,8 +9,7 @@ import asyncio
 import json
 import logging
 import os
-import asyncio
-import logging
+import sys
 import time
 from datetime import datetime
 from telethon import TelegramClient, events
@@ -39,9 +38,9 @@ class CloudUserBot:
                 api_id, 
                 api_hash,
                 # Maximum stability settings to prevent disconnections
-                flood_sleep_threshold=60,  # Higher threshold
+                flood_sleep_threshold=300,  # Higher threshold for flood protection
                 request_retries=15,        # More retries
-                connection_retries=15,     # More connection retries
+                connection_retries=20,     # More connection retries
                 retry_delay=5,             # Longer delay between retries
                 auto_reconnect=True,
                 sequential_updates=True,
@@ -60,14 +59,10 @@ class CloudUserBot:
                 receive_updates=True,
                 # Prevent session termination
                 base_logger=None,
-                # Connection pool settings
-                connection_retries=20,
                 # Keep-alive settings
                 ping_interval=60,
                 # Multi-device compatibility
-                update_workers=1,
-                # Aggressive stability
-                flood_sleep_threshold=300
+                update_workers=1
             )
         else:
             self.client = TelegramClient(StringSession(), api_id, api_hash)
@@ -82,7 +77,6 @@ class CloudUserBot:
         # Try to create/find a private channel for notifications
         self.notification_channel = None
         
-        self.monitored_groups = set()
         # Monitored groups for performance tracking
         self.monitored_groups = set()
         
