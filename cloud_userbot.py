@@ -219,7 +219,7 @@ class CloudUserBot:
             
             # Register event handlers
             self.client.add_event_handler(
-                self.handle_message, 
+                self.handle_new_message, 
                 events.NewMessage(incoming=True)
             )
             
