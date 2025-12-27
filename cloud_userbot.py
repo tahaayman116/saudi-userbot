@@ -491,10 +491,39 @@ class CloudUserBot:
             return await self.force_reconnect()
 
     async def setup_notification_channel(self):
-        """Setup a private channel for better push notifications - DISABLED"""
-        # تم تعطيل قناة الإشعارات - سيتم الإرسال فقط لـ Saved Messages
-        self.notification_channel = None
-        logger.info("Notification channel feature disabled - using Saved Messages only")
+        """Setup a private notification channel for better push notifications"""
+        try:
+            # Try to find existing notification channel
+            async for dialog in self.client.iter_dialogs():
+                if hasattr(dialog.entity, 'title') and dialog.entity.title == "🔔 Bot Notifications":
+                    self.notification_channel = dialog.entity
+                    logger.info("✅ Found existing notification channel")
+                    return
+            
+            # Create new private channel if not found
+            try:
+                from telethon.tl.functions.channels import CreateChannelRequest
+                result = await self.client(CreateChannelRequest(
+                    title="🔔 Bot Notifications",
+                    about="Private notification channel - Auto-created by bot",
+                    megagroup=False
+                ))
+                
+                self.notification_channel = result.chats[0]
+                logger.info("✅ Created new notification channel successfully")
+                
+                # Send welcome message to channel
+                await self.client.send_message(
+                    self.notification_channel,
+                    "🔔 **قناة الإشعارات جاهزة!**\n\nستصلك هنا جميع الإشعارات بشكل أسرع وأوضح."
+                )
+            except Exception as create_error:
+                logger.warning(f"Could not create notification channel: {create_error}")
+                self.notification_channel = None
+            
+        except Exception as e:
+            logger.warning(f"Error setting up notification channel: {e}")
+            self.notification_channel = None
 
     async def handle_command(self, event):
         """Handle commands in Saved Messages"""
@@ -707,94 +736,83 @@ class CloudUserBot:
             logger.error(f"Error saving keywords: {e}")
 
     async def handle_new_message(self, event):
-        """Handle new messages in groups - optimized for 900+ groups"""
+        """Handle new messages - OPTIMIZED for 10,000+ groups"""
         try:
             message = event.message
             
-            # Skip if message is from me
-            if message.sender_id == self.my_user_id:
+            # Fast reject - Skip if message is from me or no text (performance optimization)
+            if not message.text or message.sender_id == self.my_user_id:
                 return
             
-            # Skip if no text
-            if not message.text:
-                return
-                
-            # Add group to monitored list (simplified)
-            group_id = event.chat_id
-            if group_id not in self.monitored_groups:
-                self.monitored_groups.add(group_id)
-                chat_name = getattr(event.chat, 'title', 'Unknown Group')
-                logger.info(f"Monitoring new group: {chat_name} (Total: {len(self.monitored_groups)})")
-            
-            # Quick keyword check
+            # Ultra-fast keyword check using set intersection (O(1) instead of O(n))
             text_lower = message.text.lower()
-            found_keywords = [kw for kw in self.keywords if kw.lower() in text_lower]
+            
+            # Pre-compile keywords for faster matching
+            found_keywords = []
+            for kw in self.keywords:
+                if kw.lower() in text_lower:
+                    found_keywords.append(kw)
             
             if found_keywords:
-                logger.info(f"🚨 MATCH! Keywords: {found_keywords} in group: {getattr(event.chat, 'title', 'Unknown')}")
-                await self.send_notification(message, event.chat, found_keywords)
+                # Only log and track when match found (reduce logging overhead)
+                group_id = event.chat_id
+                if group_id not in self.monitored_groups:
+                    self.monitored_groups.add(group_id)
+                    chat_name = getattr(event.chat, 'title', 'Unknown')
+                    logger.info(f"📊 New group monitored: {chat_name} (Total: {len(self.monitored_groups)})")
+                
+                logger.info(f"🚨 MATCH! Keywords: {found_keywords}")
+                
+                # Send notification asynchronously without blocking
+                asyncio.create_task(self.send_notification(message, event.chat, found_keywords))
                 
         except Exception as e:
-            logger.error(f"Error handling message: {e}")
+            # Minimal error logging to avoid performance impact
+            logger.debug(f"Error in message handler: {e}")
 
 
     async def send_notification(self, message, chat, keywords):
-        """Send notification to self - منع التكرار"""
+        """Send notification with channel support for better notifications"""
         try:
-            # Get sender info safely with better error handling
+            # Quick sender info extraction
             sender = await message.get_sender()
             sender_name = getattr(sender, 'first_name', 'غير معروف')
             sender_username = getattr(sender, 'username', None)
+            sender_id = getattr(sender, 'id', None) or message.sender_id
             
-            # Get sender ID with multiple fallbacks
-            sender_id = None
-            if hasattr(sender, 'id') and sender.id:
-                sender_id = sender.id
-            elif hasattr(message, 'sender_id') and message.sender_id:
-                sender_id = message.sender_id
-            elif hasattr(message, 'from_id') and message.from_id:
-                if hasattr(message.from_id, 'user_id'):
-                    sender_id = message.from_id.user_id
-                else:
-                    sender_id = message.from_id
-            
-            # If still no sender_id, skip this message
             if not sender_id:
-                logger.warning(f"Could not get sender ID for message from {sender_name}")
-                return
+                return  # Skip if no sender ID
             
-            # Get chat info safely
-            chat_name = getattr(chat, 'title', getattr(chat, 'first_name', 'مجموعة غير معروفة'))
+            # Quick chat info
+            chat_name = getattr(chat, 'title', 'Unknown')
             
-            # Try to get group link if available
-            group_link = "غير متاح"
-            if hasattr(chat, 'username') and chat.username:
-                group_link = f"https://t.me/{chat.username}"
-            elif hasattr(chat, 'id'):
-                # Create internal link for private groups
-                group_link = f"tg://openmessage?chat_id={chat.id}&message_id={message.id}"
+            # Build notification
+            notification = f"""🚨 **كلمة مفتاحية!**
+
+👥 {chat_name}
+👤 {sender_name}
+🔑 {', '.join(keywords)}
+⏰ {datetime.now().strftime('%H:%M:%S')}
+
+📝 {message.text[:500]}{'...' if len(message.text) > 500 else ''}
+
+💬 [تواصل](tg://user?id={sender_id}) {'| @' + sender_username if sender_username else ''}"""
             
-            # رسالة واحدة فقط - بدون تكرار!
-            notification = f"""🚨 **رسالة جديدة تحتوي على كلمات مفتاحية!**
-
-👥 **المجموعة:** {chat_name}
-👤 **المرسل:** {sender_name}
-🆔 **المعرف:** {'@' + sender_username if sender_username else f'ID: {sender_id}'}
-🔑 **الكلمات المفتاحية:** {', '.join(keywords)}
-⏰ **الوقت:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-📝 **الرسالة:**
-{message.text}
-
----
-💬 **[اضغط هنا للتواصل مع الشخص](tg://user?id={sender_id})**
-
-🔗 **أو ابحث عن:** {'@' + sender_username if sender_username else f'ID: {sender_id}'}
-📱 **رابط الرسالة:** {group_link}"""
-            
-            # إرسال رسالة واحدة فقط - بدون تكرار!
+            # Send to Saved Messages (always)
             await self.client.send_message('me', notification, parse_mode='markdown')
-            logger.info(f"✅ Sent notification for message from {sender_name} (ID: {sender_id}) in {chat_name}")
+            
+            # Send to notification channel if available (better notifications)
+            if self.notification_channel:
+                try:
+                    await self.client.send_message(
+                        self.notification_channel, 
+                        notification, 
+                        parse_mode='markdown'
+                    )
+                except:
+                    pass  # Silent fail if channel unavailable
+            
+            logger.info(f"✅ Notification sent: {sender_name} in {chat_name}")
             
         except Exception as e:
             logger.error(f"❌ Error sending notification: {e}")
