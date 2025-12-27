@@ -491,29 +491,10 @@ class CloudUserBot:
             return await self.force_reconnect()
 
     async def setup_notification_channel(self):
-        """Setup a private channel for better push notifications"""
-        try:
-            # Try to find existing notification channel
-            async for dialog in self.client.iter_dialogs():
-                if hasattr(dialog.entity, 'title') and dialog.entity.title == "🔔 إشعارات البوت":
-                    self.notification_channel = dialog.entity
-                    logger.info("Found existing notification channel")
-                    return
-            
-            # Create new private channel if not found
-            from telethon.tl.functions.channels import CreateChannelRequest
-            result = await self.client(CreateChannelRequest(
-                title="🔔 إشعارات البوت",
-                about="قناة خاصة لإشعارات البوت - لا تحذفها",
-                megagroup=False
-            ))
-            
-            self.notification_channel = result.chats[0]
-            logger.info("Created new notification channel")
-            
-        except Exception as e:
-            logger.warning(f"Could not setup notification channel: {e}")
-            self.notification_channel = None
+        """Setup a private channel for better push notifications - DISABLED"""
+        # تم تعطيل قناة الإشعارات - سيتم الإرسال فقط لـ Saved Messages
+        self.notification_channel = None
+        logger.info("Notification channel feature disabled - using Saved Messages only")
 
     async def handle_command(self, event):
         """Handle commands in Saved Messages"""
@@ -682,10 +663,18 @@ class CloudUserBot:
             elif text.startswith('!'):
                 command = text[1:].strip().lower()
                 if command in ['احصائيات', 'معلومات', 'حالة']:
+                    # حساب عدد جميع المجموعات
+                    try:
+                        all_dialogs = await self.client.get_dialogs()
+                        total_groups = sum(1 for d in all_dialogs if d.is_group or d.is_channel)
+                    except:
+                        total_groups = "غير متاح"
+                    
                     response = f"""📊 **إحصائيات البوت:**
 
 🔑 **الكلمات المفتاحية:** {len(self.keywords)}
-👥 **المجموعات المراقبة:** {len(self.monitored_groups)}
+👥 **يراقب:** جميع المجموعات التي أنت عضو فيها
+📈 **إجمالي المجموعات:** {total_groups}
 ☁️ **الحالة:** يعمل على الخادم السحابي
 🆔 **معرف المستخدم:** {self.my_user_id}
 
@@ -750,7 +739,7 @@ class CloudUserBot:
 
 
     async def send_notification(self, message, chat, keywords):
-        """Send notification to self"""
+        """Send notification to self - منع التكرار"""
         try:
             # Get sender info safely with better error handling
             sender = await message.get_sender()
@@ -785,100 +774,40 @@ class CloudUserBot:
                 # Create internal link for private groups
                 group_link = f"tg://openmessage?chat_id={chat.id}&message_id={message.id}"
             
-            # Create clickable notification with verified sender_id
-            clickable_notification = f"""🚨 **رسالة جديدة تحتوي على كلمات مفتاحية!**
+            # رسالة واحدة فقط - بدون تكرار!
+            notification = f"""🚨 **رسالة جديدة تحتوي على كلمات مفتاحية!**
 
 👥 **المجموعة:** {chat_name}
 👤 **المرسل:** {sender_name}
 🆔 **المعرف:** {'@' + sender_username if sender_username else f'ID: {sender_id}'}
 🔑 **الكلمات المفتاحية:** {', '.join(keywords)}
 ⏰ **الوقت:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-☁️ **المصدر:** خادم سحابي
 
-📝 **الرسالة الكاملة:**
+📝 **الرسالة:**
 {message.text}
 
 ---
-💬 **[اضغط هنا للذهاب للشخص](tg://user?id={sender_id})**
+💬 **[اضغط هنا للتواصل مع الشخص](tg://user?id={sender_id})**
 
-🔗 **أو ابحث عن المعرف:** {'@' + sender_username if sender_username else f'ID: {sender_id}'}
-📱 **رابط الرسالة:** {group_link}
-
-🔥 **للتواصل السريع انسخ هذا الرابط:**
-`tg://user?id={sender_id}`"""
+🔗 **أو ابحث عن:** {'@' + sender_username if sender_username else f'ID: {sender_id}'}
+📱 **رابط الرسالة:** {group_link}"""
             
-            await self.client.send_message('me', clickable_notification, parse_mode='markdown')
-            logger.info(f"✅ Sent clickable notification for message from {sender_name} (ID: {sender_id}) in {chat_name}")
-            
-            # Create push notification with better contact method
-            push_notification = f"""🔔 **إشعار كلمة مفتاحية!**
-
-🚨 **{', '.join(keywords)}**
-👤 **{sender_name}**
-👥 **{chat_name}**
-
-📝 **الرسالة الكاملة:**
-{message.text}
-
-💬 **للتواصل:**
-{'@' + sender_username if sender_username else f'انسخ: tg://user?id={sender.id}'}"""
-            
-            # Create push notification with clickable link
-            push_with_link = f"""🔔 **إشعار كلمة مفتاحية!**
-
-🚨 **{', '.join(keywords)}**
-👤 **{sender_name}**
-👥 **{chat_name}**
-
-📝 **الرسالة الكاملة:**
-{message.text}
-
-💬 **[اضغط للتواصل مع الشخص](tg://user?id={sender_id})**
-
-🔥 **أو انسخ الرابط:**
-`tg://user?id={sender_id}`"""
-            
-            # Send to self using user ID (this triggers notifications better than 'me')
-            await self.client.send_message(self.my_user_id, push_with_link, parse_mode='markdown')
-            logger.info("✅ Sent push notification with clickable link")
-            
-            # Also try sending a simple text message for maximum notification visibility
-            simple_alert = f"🚨 {', '.join(keywords)} من {sender_name} في {chat_name}"
-            await self.client.send_message(self.my_user_id, simple_alert)
-            logger.info("✅ Sent simple alert notification")
-            
-            # If notification channel exists, send there too (channels give better notifications)
-            if self.notification_channel:
-                channel_with_link = f"""🔔 **إشعار جديد!**
-
-🚨 **{', '.join(keywords)}**
-👤 من: **{sender_name}**
-👥 في: **{chat_name}**
-
-📝 **الرسالة الكاملة:**
-{message.text}
-
-💬 **[اضغط للذهاب للشخص](tg://user?id={sender_id})**
-
-🔗 **أو انسخ الرابط:**
-`tg://user?id={sender_id}`"""
-                
-                await self.client.send_message(self.notification_channel, channel_with_link, parse_mode='markdown')
-                logger.info("✅ Sent notification to private channel with clickable link")
+            # إرسال رسالة واحدة فقط - بدون تكرار!
+            await self.client.send_message('me', notification, parse_mode='markdown')
+            logger.info(f"✅ Sent notification for message from {sender_name} (ID: {sender_id}) in {chat_name}")
             
         except Exception as e:
             logger.error(f"❌ Error sending notification: {e}")
             # Try simple notification as backup
             try:
-                simple_msg = f"""🚨 كلمة مفتاحية: {', '.join(keywords)}
+                simple_msg = f"""🚨 {', '.join(keywords)}
 
 👤 من: {sender_name}
 👥 في: {chat_name}
 
-📝 الرسالة الكاملة:
-{message.text}
+📝 {message.text}
 
-💬 للتواصل: {'@' + sender_username if sender_username else f'tg://user?id={sender.id}'}"""
+💬 {'@' + sender_username if sender_username else f'tg://user?id={sender.id}'}"""
                 await self.send_to_self(simple_msg)
                 logger.info("✅ Sent simple notification as backup")
             except Exception as e2:

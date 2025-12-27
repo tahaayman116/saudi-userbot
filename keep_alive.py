@@ -2,11 +2,14 @@
 """
 Keep alive server for Replit
 Runs a simple web server to keep the Repl active
+بدون الحاجة لـ UptimeRobot - يعمل بشكل داخلي!
 """
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 import logging
+import asyncio
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,7 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
         <head>
             <title>Saudi User Bot - Keep Alive</title>
             <meta charset="utf-8">
+            <meta http-equiv="refresh" content="300">
             <style>
                 body {
                     font-family: Arial, sans-serif;
@@ -52,12 +56,19 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
                     50% { opacity: 0.5; }
                 }
             </style>
+            <script>
+                // تحديث تلقائي كل 5 دقائق لإبقاء Repl نشطاً
+                setTimeout(function(){
+                    window.location.reload(1);
+                }, 300000);
+            </script>
         </head>
         <body>
             <div class="container">
                 <h1>🤖 Saudi User Bot</h1>
                 <p><span class="status"></span> البوت يعمل الآن</p>
                 <p>Bot is running and monitoring groups</p>
+                <p style="font-size: 0.9em; margin-top: 30px;">Auto-refresh every 5 minutes</p>
             </div>
         </body>
         </html>
@@ -76,6 +87,33 @@ def keep_alive():
     thread.daemon = True
     thread.start()
     logger.info("✅ Keep-alive server started on port 8080")
+    return server
+
+async def internal_ping():
+    """
+    آلية داخلية لإبقاء Repl نشطاً
+    تقوم بعمل ping داخلي كل 5 دقائق
+    """
+    import aiohttp
+    
+    while True:
+        try:
+            await asyncio.sleep(300)  # 5 دقائق
+            
+            # محاولة الوصول للخادم المحلي
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get('http://localhost:8080', timeout=10) as response:
+                        if response.status == 200:
+                            logger.info("🟢 Internal ping successful - Repl stays alive")
+                        else:
+                            logger.warning(f"⚠️ Internal ping returned status: {response.status}")
+            except Exception as ping_error:
+                logger.debug(f"Internal ping failed (normal if server not started): {ping_error}")
+                
+        except Exception as e:
+            logger.error(f"Error in internal ping loop: {e}")
+            await asyncio.sleep(60)  # انتظر دقيقة عند حدوث خطأ
 
 if __name__ == '__main__':
     keep_alive()
@@ -83,3 +121,4 @@ if __name__ == '__main__':
     import time
     while True:
         time.sleep(1)
+

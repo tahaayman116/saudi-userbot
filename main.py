@@ -3,6 +3,7 @@
 """
 Main entry point for Replit deployment
 Starts keep-alive server and the user bot
+بدون الحاجة لـ UptimeRobot - keep-alive داخلي!
 """
 
 import asyncio
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Start keep-alive server
 try:
-    from keep_alive import keep_alive
+    from keep_alive import keep_alive, internal_ping
     keep_alive()
     logger.info("✅ Keep-alive server started")
 except Exception as e:
@@ -33,11 +34,23 @@ try:
     # Import the main bot module
     from cloud_userbot import main
     
+    # Create event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # Start internal ping in background
+    try:
+        loop.create_task(internal_ping())
+        logger.info("✅ Internal keep-alive ping started - No need for UptimeRobot!")
+    except:
+        logger.info("⚠️ Internal ping not available, but bot will still work")
+    
     # Run the bot
-    asyncio.run(main())
+    loop.run_until_complete(main())
     
 except KeyboardInterrupt:
     logger.info("🛑 Bot stopped by user")
 except Exception as e:
     logger.error(f"❌ Fatal error: {e}")
     sys.exit(1)
+
